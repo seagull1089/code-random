@@ -1,0 +1,73 @@
+
+Note :- The LCS output will look like - __ABB_C_D_E where ABBCDE are the matching characters, and each non matching character is represented by '_'. (compared to the first string in mpi and longest string in threads and openmp).
+
+parallelization steps used in pthreads and LCS
+ matrix - A[M][N];
+
+- The matrix was divided vertically into equal chunks. And each thread will handle a portion of the array or the chunk assigned to it  
+- The dependent values or the array values which are used concurrently by threads are protected by mutex_locks.
+- Each thread (except last thread) initilises an array  of locks which are equal to the number of values which are shared between threads = (no of rows in the matrix) .
+- As soon as the thread writes a value to the array cell , it releases the lock on that cell if there is any.
+- The thread which is dependent on the array cell which is yet to be written has to wait till the value is written (mutex_lock). Once the lock is available , it reads the value and continues it's calculations.
+
+- the trace back for LCS in the array is done serially. 
+
+
+MPI method :
+- processor 0 reads the strings from the file. 
+- Each processor will then receive one complete string from processor 0.
+- The second string is split into equal chunks and every processor will receive a chunk.
+- processor 0 has no dependencies on any other processor so it does it's array computation normally. However the last cell in each row is communicated to processor 1 , as it will be ddependent on that value to carry forward it's array computation. Once it reaches the end of a row , it sends the last value to processor 2 . Similarly the rest of the processors repeat the same steps for each row.
+- The last processor sends it's last row and last column's value - which would be the length of the lcs in the two given strings.
+
+- The trace back starts from the last processor , which does the trace back on it's array and sends the last row value where it stopped and the sub LCS string it has calculated to it;s previous processor. The receiving processor then starts calculating the LCS in its array from the row value which it has received and appends the recieved sub LCS to its own calculated LCS. It sends the new appended LCS and the last row value where it stopped to it's previous processor. when the LCS reaches processor 0, it computes the rest of the LCS , appends it and prints the final LCS.
+
+
+to compile the programs:
+ cd to any of the directories named as threads,mpi,openmp.
+ do a make , and the executables would be one of  lcs_thread/lcs_mpi/lcs_openmp.
+
+timing results:
+[ Tested on a Intel core2 duo notebook- Mac OSx].
+
+MPI:
+$ mpirun -np 1 ./mpirun ../data/large_test1.txt ../data/large_test2.txt
+No of matching chars  = 3631
+Total time taken to compute the matrix = 2.068125
+
+
+$ mpirun -np 2 ./mpirun ../data/large_test1.txt ../data/large_test2.txt
+No of matching chars  = 3631
+Total time taken to compute the matrix = 1.197246
+
+$ mpirun -np 4 ./mpirun ../data/large_test1.txt ../data/large_test2.txt
+No of matching chars  = 3631
+Total time taken to compute the matrix = 1.210965
+
+OPENMP:
+
+$ ./lcs_openmp ../data/large_test1.txt ../data/large_test2.txt 1
+The final weight = 3631
+total time taken to calculate matrix = 4.218542
+
+$ ./lcs_openmp ../data/large_test1.txt ../data/large_test2.txt 2
+The final weight = 3631
+total time taken to calculate matrix = 4.126032
+
+$ ./lcs_openmp ../data/large_test1.txt ../data/large_test2.txt 4
+The final weight = 3631
+total time taken to calculate matrix = 4.234608
+
+THREADS:
+
+$ ./lcs_thread ../data/large_test1.txt ../data/large_test2.txt 1
+No of matching chars = 3631
+total time taken to calculate matrix = 4.371326
+
+$ ./lcs_thread ../data/large_test1.txt ../data/large_test2.txt 2
+No of matching chars = 3631
+total time taken to calculate matrix = 2.165448
+
+ ./lcs_thread ../data/large_test1.txt ../data/large_test2.txt 4
+No of matching chars = 3631
+total time taken to calculate matrix = 2.246408

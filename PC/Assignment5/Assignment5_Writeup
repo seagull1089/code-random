@@ -1,0 +1,93 @@
+to compile : 
+$cd mpi
+$make
+
+to run : 
+$mpirun -np <# of processors> mpi_method filename
+
+aoutput:
+out.txt file would be created in the same directory which has the sorted output.
+
+
+
+parallelization technique: 
+1) Input data is partitioned into p chunks each processor receives n/p elements. 
+2) Each processor does a qsort on its initial chunk of integers. 
+3) Each processor then takes out a sample of p-1 elements and sends them to the the processor 0 or the root processor . 
+4) The root processor does a qsort on the sample of elements from each of the processor and picks up p-1 sample elements. 
+5) The new p-1 sample elements selected by the root processor is then broadcasted. a
+6) Each processor calculates the buckets limits and calculates how many elements it needs to send to other processors based on the bucket limits.  and sends the information to all the processors and receives the info from the rest of the processors (MPI_Alltoall )
+7) The actual elements are transferred based on the bucket limits to their corresponding processors.
+8) Once each processor gets it elements, it does a qsort  on its set of elements. 
+9) Each processor calculates how many elements it has excess or deficit of the required n/p size. 
+
+   excess/deficit = ( current_elements_size - n/p).
+
+   excess of elements would be a positive number , whereas a deficit is a negative number 
+10) The deficit/excess numbers are shared among all the processors and each processor knows the number of excess/deficit number of elements on each processor. 
+11) Each processor calculates the cumulative deficit of elements starting from the processor = 0. The last processors cumulative deficit would be 0. 
+
+  eg1: deficit vector : 4 , 3 , -1 , -2 , -4 
+         cumulative_deficit : 4,7,6,4,0
+       2: deficit_vector : -4,4,-2,-1,3
+        cumulative_deficit : -4,0,-2,-3,0
+
+12) The shifting  operation happens on the following rule: 
+
+     if the left side of the processor (myid -1) has negative cumulative  deficit , then send the required number of cumulative elements to left. 
+    if the left side (myid -1) is having excess, then simply receive the data from the left processor. 
+  
+   The left side operations are not valid for 0th processor.    
+
+  similarly, 
+   if the current processor has cumulative excess elements , then send the cumulative excess elements to the right side processor (myid +1) . 
+  else if the current processor has cumulative deficit , then recieve the required number of elements from the right side processor (myid +1).
+    The right side operations are not valid for the last processor. 
+  
+ Once the required elements  are  sent/recieved, the received elements are copied into the original n/p elements vector at the appropriate locations. The rest of the valid sorted elements from the processors bucket , is then copied to the orginal n/p elements vector. 
+
+(The recieve and send operations are done using Isend/Irecv)
+ 
+  The Assumption here is that each processor holds sufficient number of elements to cater the deficit of right and left processors , which will hold true in most  cases provided that the sampling process is not  skewed.
+
+12) Once the sample sort is done , the chunk of elements of each processor is sent to 0th processor , where it is written to a file - out.txt. 
+
+computational complexity of sample sort in this case :
+  n = input size: 
+
+ - Each processor has to do 2 times q sort: 2*O((n/p)log(n/p))
+ - send p-1 elemts to processor 0 (Gather) : logp*(ts + (p-1)*tw)
+ - recieve p-1 elements from processor 0 (Broadcast): logp*(ts+ (p-1)*tw) 
+ - send/recieve n/p elements ( all to all ) :(ts*logp + tw*(n/p)(p-1))
+ - send p elements for deficit (all to all) :(ts*logp + tw*p*(p-1))
+ - send/recieve K elements ( k<<n/p) from it's left and right processors : 2*(ts + Ktw)
+ - put the recieved elements in the orginal array : O(n/p) 
+
+  Parallel Computation time  : O((n/p)log(n/p)) + O(n/p) = O((n/p)log(n/p))
+  Parallel Communication time : 2*( logp*ts + tw*(n/p)(p-1)) + logp*ts + logp*(p-1)*tw +   2*(ts+ Ktw) = C1*logp*ts + C2*tw*n ; where C1,C2 are some constants. 
+ 
+
+
+timing results for 10M and 5M inputs:
+
+ $mpirun -np 8 mpi_method /class/csci5451/hw5_10M.txt
+ Time taken for sample sort  for 8 processors = 2.118318
+ $mpirun -np 4 mpi_method /class/csci5451/hw5_10M.txt
+ Time taken for sample sort  for 4 processors = 3.862972 
+ $mpirun -np 2 mpi_method /class/csci5451/hw5_10M.txt
+ Time taken for sample sort  for 2 processors = 6.913542 
+ $mpirun -np 1 mpi_method /class/csci5451/hw5_10M.txt
+ Time taken for sample sort  for 1 processors = 13.132006 
+
+
+$mpirun -np 8 mpi_method /class/csci5451/hw5_5M.txt      
+ Time taken for sample sort  for 8 processors = 1.161612 
+$mpirun -np 4 mpi_method /class/csci5451/hw5_5M.txt
+ Time taken for sample sort  for 4 processors = 1.884686 
+$mpirun -np 2 mpi_method /class/csci5451/hw5_5M.txt
+ Time taken for sample sort  for 2 processors = 3.362061 
+$mpirun -np 1 mpi_method /class/csci5451/hw5_5M.txt
+ Time taken for sample sort  for 1 processors = 6.392937 
+
+
+
