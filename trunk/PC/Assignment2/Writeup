@@ -1,0 +1,64 @@
+Parallelisation strategy :
+
+threads: 
+- The array is global 
+- The main thread creates partition idices so that a thread can pick up it's indices based on it's id which is allocated by the main thread.g
+
+a) The main process selects a random pivot from the valid index ranges of the array and sets the pivot element globally.
+
+b)The main process then spawns threads and allocated them a id. 
+
+c)Each thread based on its id , get's it's sub array indices and starts partitioning based on the global pivot value and stores the rank of the pivot (w.r.t sub array) in a global ranks array and exits. 
+
+d)the main process waits till all the threads are finished. It then calculates the rank of the pivot element (sum of all individual local ranks) to get the true rank of the pivot in the larger array. If the rank is equal to N/2 , the pivot element is the median. else the partition indices are adjusted accordingly and steps from a) to d) are repeated.
+
+
+
+MPI method:
+
+Main process reads the entire array from file and sends the chunks of arrays, and chunk sizes to corresponding processes.
+
+
+a)Main process chooses a pivot index (from orginal dimensions initially or from valid index ranges afterwards  ) and sends it to all processes. 
+
+b)Each process determines if the pivot belongs to its range or not and sends back the appropriate pivot value to processor 0 or they will send a -1;
+
+c)processor 0 gets the pivot value and sends it back to all the processors to start processing on their local sub arrays. 
+
+d)Each processor sends back the local ranks to processor 0. Processor 0 sees if the sum of total ranks == N/2 or not. If not it will adjust the partition indices and sends them to the rest of the processes. - and steps a) to d) are repeated until the required rank element is found.
+
+
+Convergence:[ pthreads and MPI]
+--------------
+
+ - There is a case in which if the array has mutiple duplicate elements, the convergence is a problem . To fix this issue, the parent process checks if the current total rank is less than N/2 and is the maximum of the ranks seen so far which are less than N/2 and. If the same ranks has repeated for more than some 'n' times, the current pivot element is the median which we are looking for.
+
+Timings :
+[ Executed on local machine: intel core s2 duo]
+MPI timings : 
+--------------
+ragip002$ mpirun -np 4 ./mpirun ../../large_test.txt 
+total Execution time  = 0.000458
+Median value = 5001.000000 
+ 
+ragip002$ mpirun -np 2 ./mpirun ../../large_test.txt 
+total Execution time  = 0.000284
+Median value = 5001.000000 
+
+ ragip002$ mpirun -np 1 ./mpirun ../../large_test.txt 
+total Execution time  = 0.000457
+Median value = 5001.000000 
+
+pthread timings:
+--------------
+
+$ ./thread_method ../large_test.txt 4
+Total Execution time = 0.590036 
+median = 5001 
+$ ./thread_method ../large_test.txt 2
+Total Execution time = 0.712468 
+median = 5001 
+$ ./thread_method ../large_test.txt 1
+Total Execution time = 0.426467 
+median = 5001 
+

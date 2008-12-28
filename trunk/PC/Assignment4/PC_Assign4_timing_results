@@ -1,0 +1,137 @@
+
+To compile : cd mpi; make 
+To run the program :mpirun -np 4 ./mpi_method mXX-Aij mXX.vec 
+The output of the multiplication will be written to a file called out.txt.
+
+-----------
+
+Processor 0 reads the mXX.vec file to calculate the size of the matrix.
+It then decides the number of rows to be sent for each processor. It starts reading 
+from the file the chunk of rows into a datastructure and send the data to each processor.
+
+ The datastructure for sparse rows is defined as follows: 
+		int rowinfo[] - stores the index value and the corresponding number of non zero elements 
+			in the row in adjacent indexes.
+			e.g : rowinfo = { 0,2,1,4,2, .. } 
+			means 0 row has 2 nnz elements , row num 1 has 4 nnz elements etc ..
+		int colinfo[] - stores the all the j indices in the given chunk of rows
+			 ( the same order in the file).
+		double values - stores the corresponding values. 
+
+
+Each processor then analyzes which elements it needs from other processors by scanning
+ through their column indices and forms a an array 
+of unique indices it needs from other processors. This is achieved thru a set operation.
+ ( I used a bit vector to find out which elements are
+there). [Note : The bit manipulation macros are taken from http://c-faq.com/misc/bitsets.html]. 
+
+- The array of uniques indices would be in a sorted order.
+
+Each processor then figures out to which processor it needs to communicate for a particular
+ set of indices.[ The chunks of rows are assigned serially so each processor knows who has
+ the corresponding B values]. 
+
+Each processor uses MPI_AlltoAll method to tell other processors about how much data it is expecting from them. It also recieves the same info from others.
+
+It then forms the displacement vector and uses MPI_AlltoAllv to communicate with other processors about
+ the missing indices and  also recieves the array of indices which other processors need from it.
+
+It fills an array of values which other processors are looking for and uses again MPI_AlltoAllv method to send out the data. In the same step it recieves the data 
+which it needs from other processors.
+
+Each processor then proceeds to do the computation on the data it has. 
+
+The vector values it recieved from others are stored in a separate array.To lookup a value for a corresponding index ,
+ we first refer to the unique indices vector which we had calculated earlier and then lookup the corresponding index in the values index. 
+
+ eg. uinque_indices = { 4,5,7,9,10} 
+     gathered_B_values = { 2.0001,-0.988232,0.121212,-4.232323}
+	then B[4] = 2.0001
+	     B[5] = -0.988232
+
+While computing a particular row in the output matrix, as the j values are always increasing in order ,
+a reference to the last accessed index in the unique_indices vector is kept. The next value of for computation 
+ would either be in the list of known values of B which 
+can be accessed in O(1) or in the the gathered_B_values and the index of that value would be only 
+after last accessed index and this value can be accessed in an average constant time.(may be O(2) or O(3)).
+
+
+Expression for parallel computing time - For steps 2 to 6:
+ 
+-  Assuming that all the processors are communicating equal amount 
+	of data in an optimal fashion assuming hypercube architecture:
+
+
+ - there are three AlltoAll communications. 
+ So communication time =   3*(ts + tw*(N/p))*(p-1).
+ Calculation time  [assuming addition and multiplication are of equal cost,] we need to do approximately 2*N  calculations per row. 
+	so total calculations done = N/p * 2*N  = 2*N^2/p
+
+so total parallel time is approximately : (p-1)*(ts + tw*(N/p)) + N^2/p.
+
+
+ 
+
+
+
+Timing results : 
+
+For Matrix A with n = 100k 
+
+For 1 processors
+Time taken to perfrom steps 2 thru 6 = 1.432774
+Time taken to perfrom step  5 thru 6 = 1.132606
+
+For 2 processors
+Time taken to perfrom steps 2 thru 6 = 0.952557
+Time taken to perfrom step  5 thru 6 = 0.792768
+
+For 4 processors
+Time taken to perfrom steps 2 thru 6 = 0.512918
+Time taken to perfrom step  5 thru 6 = 0.443271
+
+
+For Matrix B with n = 100k 
+
+For 1 processors
+Time taken to perfrom steps 2 thru 6 = 1.448494
+Time taken to perfrom step  5 thru 6 = 1.202124
+
+For 2 processors
+Time taken to perfrom steps 2 thru 6 = 31.454463
+Time taken to perfrom step  5 thru 6 = 31.160072
+
+For 4 processors
+Time taken to perfrom steps 2 thru 6 = 31.765776
+Time taken to perfrom step  5 thru 6 = 31.598656
+
+
+
+For Matrix B with n = 50k 
+
+For 1 processors
+Time taken to perfrom steps 2 thru 6 = 1.186794
+Time taken to perfrom step  5 thru 6 = 0.902773
+
+For 2 processors
+Time taken to perfrom steps 2 thru 6 = 6.082715
+Time taken to perfrom step  5 thru 6 = 5.986865
+
+For 4 processors
+Time taken to perfrom steps 2 thru 6 = 7.432259
+Time taken to perfrom step  5 thru 6 = 7.365505
+
+
+For Matrix A with n = 50k
+For 1 processors
+Time taken to perfrom steps 2 thru 6 = 0.781698
+Time taken to perfrom step  5 thru 6 = 0.579898
+
+For 2 processors
+Time taken to perfrom steps 2 thru 6 = 0.544831
+Time taken to perfrom step  5 thru 6 = 0.430544
+
+For 4 processors
+Time taken to perfrom steps 2 thru 6 = 0.245184
+Time taken to perfrom step  5 thru 6 = 0.199262
+

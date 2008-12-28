@@ -1,0 +1,14 @@
+Instructions to execute programs
+
+for MPI 
+--------
+cd MPI
+make 
+mpirun -np (proces_num) ./mpi_method fileName
+
+for PThreads:
+-----------
+cd PThreads
+make 
+./thread_method filename num_threads
+

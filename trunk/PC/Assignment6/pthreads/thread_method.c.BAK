@@ -1,0 +1,173 @@
+#include"utils.h"
+#include<pthread.h>
+
+int max_node,num_threads;
+struct AdjacentNodesInfo *adjnodesinfo;
+struct IndirectNodesInfo *indirectnodesinfo; 
+int *C_Vector;
+int *MIS; 
+int *rand_vector; 
+int            *thread_ids;
+pthread_t      *tids;
+void  *thread_function(void *arg);
+int num_threads,max_node;
+int chunksize; 
+void markIndepdendet(struct MinRandIndex minrand);
+int isMinimumInAdjacent(struct MinRandIndex minrand);
+
+int main(int argc,char **argv){
+	if(argc < 3) {
+		printf("Usage : progname  filename num_threads\n");
+		exit(1);
+	}
+
+	char *filename = argv[1];
+	num_threads = atoi(argv[2]);
+	printf("DEBUG args = %s %d \n",filename,num_threads);
+	FILE *fp = fopen(filename,"r");
+	max_node = maxNodes(fp);
+	rewind(fp);
+		
+	adjnodesinfo = readData(fp,1,max_node); 
+	close(fp);
+	
+	chunksize = max_node/num_threads;
+	printf("chunksize  %d  maxnode = %d \n" , chunksize,max_node);
+	indirectnodesinfo = getIndirectNodes(adjnodesinfo);
+		
+	MIS = malloc(sizeof(int) * max_node);
+	C_Vector = malloc(sizeof(int)* max_node); 
+
+
+	int i=0,j=0;
+	for(i=0;i<max_node;i++){
+		MIS[i]= 0;
+		C_Vector[i] =1;
+	} 	
+	rand_vector = getUniqueRandomNumbers(max_node);
+	for(i=0;i<max_node;i++){
+		//printf(" %d ",rand_vector[i]);
+	}
+
+	thread_ids = (int *) malloc(num_threads * sizeof(int));
+	tids = (pthread_t *) malloc(num_threads * sizeof(pthread_t));
+
+        for (i = 0; i < num_threads; i++) {
+		 thread_ids[i]=i;
+                 pthread_create(&tids[i], NULL,
+                                       thread_function, &thread_ids[i]);
+        }
+ 
+
+        for (i = 0; i < num_threads; i++) {
+                  (void) pthread_join(tids[i], NULL);
+         }
+
+
+	printf(" MIS nodes are : ");
+	for(i=0;i<max_node;i++){
+		if(MIS[i] == 1) {
+			printf(" %d ", adjnodesinfo->nodes[i]);
+		}
+	}
+	
+	free(thread_ids);	
+	free(rand_vector);
+	free(adjnodesinfo);
+	free(indirectnodesinfo);
+}
+
+
+struct MinRandIndex getMinRandIndex(int l_index, int r_index){
+	int i = 0; 
+	int min_rand = -1;
+	int min_index = -1;
+	for(i=l_index;i<r_index;i++){
+		if(C_Vector[i] ==1) {
+			if(min_rand == -1){
+				min_rand = rand_vector[i];
+				min_index = i;
+			}
+			if(rand_vector[i] < min_rand){
+				min_rand = rand_vector[i];
+				min_index = i;
+			} 
+		}
+	}
+
+	struct MinRandIndex minrandindex; 
+	minrandindex.min_index = min_index;
+	minrandindex.min_rand = min_rand;
+	return minrandindex;
+}
+
+int isMinimumInAdjacent(struct MinRandIndex minrand){
+	int index = minrand.min_index;
+	int val = minrand.min_rand;
+	/* search in direct and indirect nodes */
+	int i = 0;
+	for(i=adjnodesinfo->direct_adjnodes_lengths[index];
+		i<adjnodesinfo->direct_adjnodes_lengths[index+1];i++){
+		int node = adjnodesinfo->direct_adjnodes[i];
+		if(C_Vector[node-1] == 1 && rand_vector[node-1] < val){
+			printf(" no .. node = %d , value = %d \n",adjnodesinfo->nodes[node-1],rand_vector[node-1]);
+			return 0;
+		}
+	}
+	
+	return 1;
+} 
+
+void markIndepdendet(struct MinRandIndex minrand){
+
+	int index = minrand.min_index;
+	int val = minrand.min_rand;
+	/* search in direct and indirect nodes */
+	int i = 0;
+	MIS[index] =1;
+	C_Vector[index] =0;
+	for(i=adjnodesinfo->direct_adjnodes_lengths[index];
+		i<adjnodesinfo->direct_adjnodes_lengths[index+1];i++){
+		int node = adjnodesinfo->direct_adjnodes[i];
+		if(C_Vector[node-1] == 1 )
+			C_Vector[node-1] = 0;
+	}
+	
+
+}
+
+void  *thread_function(void *arg)
+{
+        int  *myid = (int *) arg;
+	int l_index = (*myid)*chunksize;
+	int r_index = (*myid+1)*chunksize;
+	if(*myid == num_threads -1) {
+		r_index = max_node;
+	}
+	printf(" This is from thread %d min_index = %d max_index = %d  max_node = %d \n",*myid,l_index,r_index,max_node);	
+	
+	struct MinRandIndex minrand = getMinRandIndex(l_index,r_index);
+	while(1){
+//	while(minrand.min_rand > 0){
+	int i=0,j=0;
+	for(i=l_index,j=0; i< r_index; i++,j++){
+		if(read_C_Vector(i) == 1 && isMinimumInAdjacent(i,rand_vector[i])){
+			MIS[i] = 1;
+		} 
+
+	} 
+	
+		if(isMinimumInAdjacent(minrand)){
+			printf("Minimum at  minindex = %d minrand = %d \n",minrand.min_index,minrand.min_rand);
+			markIndepdendet(minrand);
+		}else{
+			C_Vector[minrand.min_index] = 0;
+		}
+			printf(" ---- minindex = %d minrand = %d \n",minrand.min_index,minrand.min_rand);
+		minrand = getMinRandIndex(l_index,r_index);
+	}		
+	}
+	
+        return (void *) 0;
+}
+
